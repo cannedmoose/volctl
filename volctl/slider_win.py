@@ -140,6 +140,8 @@ class VolumeSliders(Gtk.Window):
                 sink_inputs = []
 
         # Sinks
+
+        # TODO (callan) seperate sinks between local/remote/application
         for sink in sinks:
             for prop_name in ["alsa.card_name", "device.description"]:
                 try:
@@ -161,8 +163,13 @@ class VolumeSliders(Gtk.Window):
             scale.connect("value-changed", self._cb_sink_scale_change, idx)
             btn.connect("toggled", self._cb_sink_mute_toggle, idx)
             pos += 1
+            print("SINK", sink.proplist)
 
         # Sink inputs
+        # TODO(Callan) re-enable DISABLEd: BECAUSE WE GET SOME WEIRD ONES
+        # should be per applications but shows a bunch of python ones?
+        # should have the sinks be per application anyway - not per window.
+        sink_inputs = []
         if sink_inputs:
             separator = Gtk.Separator().new(Gtk.Orientation.VERTICAL)
             separator.set_margin_top(self.SPACING)
@@ -225,9 +232,19 @@ class VolumeSliders(Gtk.Window):
         btn.set_margin_bottom(self.SPACING)
         btn.set_tooltip_markup(name)
 
+        # Default button
+        icon_default = Gtk.Image()
+        icon_default.set_from_icon_name("media-playback-start-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
+        btn_default = Gtk.ToggleButton()
+        btn_default.set_image(icon_default)
+        btn_default.set_relief(Gtk.ReliefStyle.NONE)
+        btn_default.set_margin_bottom(self.SPACING)
+        btn_default.set_tooltip_markup("Set Default")
+
         self._update_scale_values((scale, btn), val, mute)
         self._grid.attach(scale, pos, 0, 1, 1)
         self._grid.attach(btn, pos, 1, 1, 1)
+        self._grid.attach(btn_default, pos, 2, 1, 1)
         return scale, btn
 
     @staticmethod
