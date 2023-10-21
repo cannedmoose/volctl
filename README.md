@@ -1,5 +1,16 @@
 # volctl
 
+FORK OF: https://github.com/buzz/volctl
+
+With changes for my personal use
+- Make the button for sinks toggle default rather than mute
+
+Future changes:
+- group applications
+- show remote/local sinks differently
+
+------------------------
+
 Per-application volume control and OSD for Linux desktops.
 
 ![Screenshot](https://buzz.github.io/volctl/screenshot.png)
