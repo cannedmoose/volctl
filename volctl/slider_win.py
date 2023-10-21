@@ -156,20 +156,21 @@ class VolumeSliders(Gtk.Window):
                 "audio-card",
                 sink.volume.value_flat,
                 sink.mute,
+                sink.index == self._volctl.pulsemgr.default_sink_idx
             )
             scale, btn = self._add_scale(pos, props)
             self._sink_scales[sink.index] = scale, btn
             idx = sink.index
             scale.connect("value-changed", self._cb_sink_scale_change, idx)
-            btn.connect("toggled", self._cb_sink_mute_toggle, idx)
+            btn.handler = btn.connect("toggled", self._cb_sink_default_toggle, idx)
             pos += 1
-            print("SINK", sink.proplist)
 
         # Sink inputs
         # TODO(Callan) re-enable DISABLEd: BECAUSE WE GET SOME WEIRD ONES
         # should be per applications but shows a bunch of python ones?
         # should have the sinks be per application anyway - not per window.
-        sink_inputs = []
+        # print(list(map(lambda x: x.proplist["application.name"], sink_inputs)))
+        # sink_inputs = []
         if sink_inputs:
             separator = Gtk.Separator().new(Gtk.Orientation.VERTICAL)
             separator.set_margin_top(self.SPACING)
@@ -180,7 +181,7 @@ class VolumeSliders(Gtk.Window):
             for sink_input in sink_inputs:
                 name, icon_name = self._name_icon_name_from_sink_input(sink_input)
                 props = name, icon_name, sink_input.volume.value_flat, sink_input.mute
-                scale, btn = self._add_scale(pos, props)
+                scale, btn = self._add_input_scale(pos, props)
                 self._sink_input_scales[sink_input.index] = scale, btn
                 idx = sink_input.index
                 scale.connect("value-changed", self._cb_sink_input_scale_change, idx)
@@ -192,6 +193,52 @@ class VolumeSliders(Gtk.Window):
         GLib.idle_add(self._set_position)
 
     def _add_scale(self, pos, props):
+        name, icon_name, val, mute, default = props
+        # Scale
+        scale = Gtk.Scale().new(Gtk.Orientation.VERTICAL)
+
+        scale_size = 128
+        volume_lim = 1.0
+        extra_volume_factor = 1.5  # hard-coded for now
+        if self._volctl.settings.get_boolean("allow-extra-volume"):
+            scale_size = int(scale_size * extra_volume_factor)
+            volume_lim = extra_volume_factor
+            scale.add_mark(1.0, Gtk.PositionType.LEFT, None)
+
+        scale.set_range(0.0, volume_lim)
+        scale.set_inverted(True)
+        scale.set_size_request(24, scale_size)
+        scale.set_margin_top(self.SPACING)
+        scale.set_tooltip_markup(name)
+        self._set_increments_on_scale(scale)
+        if self._show_percentage:
+            scale.set_draw_value(True)
+            scale.set_value_pos(Gtk.PositionType.BOTTOM)
+            scale.connect("format_value", self._cb_format_value)
+        else:
+            scale.set_draw_value(False)
+
+        if self._volctl.settings.get_boolean("vu-enabled"):
+            scale.set_has_origin(False)
+            scale.set_show_fill_level(False)
+            scale.set_fill_level(0)
+            scale.set_restrict_to_fill_level(False)
+
+        # Default button
+        icon = Gtk.Image()
+        icon.set_from_icon_name(icon_name, Gtk.IconSize.SMALL_TOOLBAR)
+        btn = Gtk.ToggleButton()
+        btn.set_image(icon)
+        btn.set_relief(Gtk.ReliefStyle.NONE)
+        btn.set_margin_bottom(self.SPACING)
+        btn.set_tooltip_markup(name)
+
+        self._update_scale_values((scale, btn), val, default)
+        self._grid.attach(scale, pos, 0, 1, 1)
+        self._grid.attach(btn, pos, 1, 1, 1)
+        return scale, btn
+    
+    def _add_input_scale(self, pos, props):
         name, icon_name, val, mute = props
         # Scale
         scale = Gtk.Scale().new(Gtk.Orientation.VERTICAL)
@@ -232,19 +279,9 @@ class VolumeSliders(Gtk.Window):
         btn.set_margin_bottom(self.SPACING)
         btn.set_tooltip_markup(name)
 
-        # Default button
-        icon_default = Gtk.Image()
-        icon_default.set_from_icon_name("media-playback-start-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
-        btn_default = Gtk.ToggleButton()
-        btn_default.set_image(icon_default)
-        btn_default.set_relief(Gtk.ReliefStyle.NONE)
-        btn_default.set_margin_bottom(self.SPACING)
-        btn_default.set_tooltip_markup("Set Default")
-
         self._update_scale_values((scale, btn), val, mute)
         self._grid.attach(scale, pos, 0, 1, 1)
         self._grid.attach(btn, pos, 1, 1, 1)
-        self._grid.attach(btn_default, pos, 2, 1, 1)
         return scale, btn
 
     @staticmethod
@@ -265,9 +302,16 @@ class VolumeSliders(Gtk.Window):
             except KeyError:
                 icon_name = "multimedia-volume-control"
         return name, icon_name
+    
+    @staticmethod
+    def _update_scale_values(scale_btn, volume, isdefault):
+        scale, btn = scale_btn
+        scale.set_value(volume)
+        if isdefault is not None:
+            btn.set_active(isdefault)    
 
     @staticmethod
-    def _update_scale_values(scale_btn, volume, mute):
+    def _update_input_scale_values(scale_btn, volume, mute):
         scale, btn = scale_btn
         scale.set_value(volume)
         if mute is not None:
@@ -302,7 +346,8 @@ class VolumeSliders(Gtk.Window):
             scale_btn = self._sink_scales[idx]
         except KeyError:
             return
-        self._update_scale_values(scale_btn, volume, mute)
+        self._update_scale_values(scale_btn, volume, idx == self._volctl.pulsemgr.default_sink_idx)
+
 
     def update_sink_input_scale(self, idx, volume, mute):
         """Update sink input scale by index."""
@@ -310,7 +355,7 @@ class VolumeSliders(Gtk.Window):
             scale_btn = self._sink_input_scales[idx]
         except KeyError:
             return
-        self._update_scale_values(scale_btn, volume, mute)
+        self._update_input_scale_values(scale_btn, volume, mute)
 
     def update_scale_peak(self, idx, val):
         """Update scale peak value by index on a sink or sink input scale."""
@@ -365,6 +410,28 @@ class VolumeSliders(Gtk.Window):
     def _cb_sink_mute_toggle(self, button, idx):
         mute = button.get_property("active")
         self._volctl.pulsemgr.sink_set_mute(idx, mute)
+    
+    def _cb_sink_default_toggle(self, button, idx):
+        default = button.get_property("active")
+        sinks = []
+        with self._volctl.pulsemgr.pulse() as pulse:
+            try:
+                sinks = pulse.sink_list()
+                if sinks:
+                    if default:
+                        sink = next((x for x in sinks if x.index == idx), sinks[0])
+                        pulse.default_set(sink)
+                    else:
+                        pulse.default_set(sinks[0])
+            except c.pa.CallError:
+                print("Warning: Could not get sinks/sink inputs")
+
+        # TODO(callan) should update the toggle states on eventrs, so it reacts to external 
+        for i in self._sink_scales:
+            scale, btn = self._sink_scales[i]
+            with btn.handler_block(btn.handler):
+                btn.set_active(i == self._volctl.pulsemgr.default_sink_idx)
+
 
     def _cb_sink_input_mute_toggle(self, button, idx):
         mute = button.get_property("active")
