@@ -8,6 +8,8 @@ for main and application volume.
 from gi.repository import Gtk, Gdk, GLib
 from pulsectl.pulsectl import c
 
+import time
+
 
 class VolumeSliders(Gtk.Window):
     """Window that displays volume sliders."""
@@ -143,17 +145,22 @@ class VolumeSliders(Gtk.Window):
 
         # TODO (callan) seperate sinks between local/remote/application
         for sink in sinks:
-            for prop_name in ["alsa.card_name", "device.description"]:
+            for prop_name in ["device.profile.description", "alsa.card_name", "device.description"]:
                 try:
                     card_name = sink.proplist[prop_name]
                     break
                 except KeyError:
                     continue
                 card_name = sink.name
-
+            
+            icon_name = "audio-speakers"
+            if "HDMI" in card_name:
+                icon_name = "video-display"
+            elif "Speakers" in card_name or "Headphones" in card_name:
+                icon_name = "audio-headphones"
             props = (
                 card_name,
-                "audio-card",
+                icon_name,
                 sink.volume.value_flat,
                 sink.mute,
                 sink.index == self._volctl.pulsemgr.default_sink_idx
@@ -339,6 +346,15 @@ class VolumeSliders(Gtk.Window):
             self._timeout = None
 
     # Updates coming from outside
+    def update_active_scale(self):
+        for i in self._sink_scales:
+            scale, btn = self._sink_scales[i]
+            with btn.handler_block(btn.handler):
+                btn.set_active(i == self._volctl.pulsemgr.default_sink_idx)
+    
+    def delay_update_active_scale(self):
+        time.sleep(.1)
+        self.update_active_scale()
 
     def update_sink_scale(self, idx, volume, mute):
         """Update sink scale by index."""
@@ -421,16 +437,12 @@ class VolumeSliders(Gtk.Window):
                     if default:
                         sink = next((x for x in sinks if x.index == idx), sinks[0])
                         pulse.default_set(sink)
-                    else:
-                        pulse.default_set(sinks[0])
+                    #else:
+                    #    pulse.default_set(sinks[0])
             except c.pa.CallError:
                 print("Warning: Could not get sinks/sink inputs")
-
-        # TODO(callan) should update the toggle states on eventrs, so it reacts to external 
-        for i in self._sink_scales:
-            scale, btn = self._sink_scales[i]
-            with btn.handler_block(btn.handler):
-                btn.set_active(i == self._volctl.pulsemgr.default_sink_idx)
+        if default:
+            GLib.idle_add(self.delay_update_active_scale)
 
 
     def _cb_sink_input_mute_toggle(self, button, idx):

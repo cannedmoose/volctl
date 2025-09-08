@@ -179,6 +179,8 @@ class PulseManager:
             if obj:
                 method = getattr(self._volctl, f"{fac}_update")
                 method(event.index, obj.volume.value_flat, obj.mute == 1)
+            if self._volctl.sliders_win:
+                self._volctl.sliders_win.update_active_scale()
 
         elif event.t in (PulseEventTypeEnum.new, PulseEventTypeEnum.remove):
             self._volctl.slider_count_changed()

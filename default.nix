@@ -1,28 +1,43 @@
-{ pkgs ? import <nixpkgs> {} }:
+{
+  lib,
+  python3Packages,
+  fetchFromGitHub,
+  wrapGAppsHook3,
+  gobject-introspection,
+  libpulseaudio,
+  glib,
+  gtk3,
+  pango,
+  xorg,
+}:
 
-pkgs.python3Packages.buildPythonApplication rec {
-  pname = "volcal";
+python3Packages.buildPythonApplication rec {
+    pname = "volcal";
   version = "0.9.4";
 
-  src = /home/callan/git/volctl;
+  src = ./.;
+  format = "setuptools";
 
   postPatch = ''
     substituteInPlace volctl/xwrappers.py \
-      --replace 'libXfixes.so' "${pkgs.xorg.libXfixes}/lib/libXfixes.so" \
-      --replace 'libXfixes.so.3' "${pkgs.xorg.libXfixes}/lib/libXfixes.so.3"
+      --replace 'libXfixes.so' "${xorg.libXfixes}/lib/libXfixes.so" \
+      --replace 'libXfixes.so.3' "${xorg.libXfixes}/lib/libXfixes.so.3"
   '';
 
   preBuild = ''
-    export LD_LIBRARY_PATH=${pkgs.libpulseaudio}/lib
+    export LD_LIBRARY_PATH=${libpulseaudio}/lib
   '';
 
-  nativeBuildInputs =  with pkgs; [
+  nativeBuildInputs = [
     gobject-introspection
-    wrapGAppsHook
-    pylint
+    wrapGAppsHook3
   ];
 
-  propagatedBuildInputs =  with pkgs; [ pango gtk3 ] ++ (with python3Packages; [
+  propagatedBuildInputs = [
+    pango
+    gtk3
+  ]
+  ++ (with python3Packages; [
     pulsectl
     click
     pycairo
@@ -31,7 +46,7 @@ pkgs.python3Packages.buildPythonApplication rec {
   ]);
 
   # with strictDeps importing "gi.repository.Gtk" fails with "gi.RepositoryError: Typelib file for namespace 'Pango', version '1.0' not found"
-  strictDeps = true;
+  strictDeps = false;
 
   # no tests included
   doCheck = false;
@@ -39,7 +54,16 @@ pkgs.python3Packages.buildPythonApplication rec {
   pythonImportsCheck = [ "volctl" ];
 
   preFixup = ''
-    glib-compile-schemas ${pkgs.glib.makeSchemaPath "$out" "${pname}-${version}"}
-    gappsWrapperArgs+=(--prefix LD_LIBRARY_PATH : "${pkgs.libpulseaudio}/lib")
+    glib-compile-schemas ${glib.makeSchemaPath "$out" "${pname}-${version}"}
+    gappsWrapperArgs+=(--prefix LD_LIBRARY_PATH : "${libpulseaudio}/lib")
   '';
+
+  meta = with lib; {
+    description = "PulseAudio enabled volume control featuring per-app sliders";
+    homepage = "https://buzz.github.io/volctl/";
+    license = licenses.gpl2Only;
+    platforms = platforms.linux;
+    maintainers = [ maintainers.romildo ];
+    mainProgram = "volctl";
+  };
 }
